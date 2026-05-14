@@ -36,7 +36,7 @@ def create_model(name, region, **kwargs):
         formula += ' + er'
     return smf.ols(formula, data=data).fit()
 
-#TODO Add regression models for other asset classes
+
 sp500 = create_model('SP500', 'US', ac='index')
 dgs10 = create_model('DGS10', 'US', ac='govbond')
 bbb = create_model('BAMLC0A4CBBBEY', 'US', ac='index')
