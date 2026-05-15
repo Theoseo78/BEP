@@ -6,9 +6,16 @@ from plotnine import __version__ as p9__version__
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 
+# scenario's
+# Net Zero 2050
+# Delayed transition
+# Current Policies
+# Fragmented World
+
+
 def create_model(name, region, **kwargs):
     ac = kwargs.pop("ac", None)
-    class_to_var = {'index':  'epi',
+    class_to_var = {'index': 'epi',
                     'govbond': 'ltir'}
     # Reading the data
     data = pd.read_csv(f'Historical data/{region}/{region}_historical.csv')
@@ -16,7 +23,6 @@ def create_model(name, region, **kwargs):
 
     # Correct if there is mismatch in size
     if len(y) < len(data):
-
         # Shift existing index downward
         offset = len(data) - len(y)
         y.index = y.index + offset
@@ -25,7 +31,6 @@ def create_model(name, region, **kwargs):
         y = y.reindex(range(len(data)))
 
     data.insert(2, 'y', y[f'{name}'])
-    print(y)
 
     # Work with log prices
     formula = 'np.log(y) ~ pr + CPI + rGDP'
@@ -37,10 +42,67 @@ def create_model(name, region, **kwargs):
     return smf.ols(formula, data=data).fit()
 
 
+def predict(model, region, scenario):
+    nigem_regions = {'US': 'NiGEM NGFS v1.24.2|United States',
+                     'EU': "NiGEM NGFS v1.24.2|Europe"}
+    df = pd.read_csv(f'NGFS data/NiGEM_working_set.csv')
+    df = df.loc[df['Region'] == nigem_regions[region]]
+
+    if scenario in ['Net Zero 2050', 'Fragmented World', 'Delayed transition']:
+        reg_variables = ["Central bank Intervention rate (policy interest rate) ; %(combined)",
+                         'Equity prices(combined)',
+                         'Gross Domestic Product (GDP)(combined)',
+                         'Inflation rate ; %(combined)',
+                         'Long term interest rate ; %(combined)']
+        df = df[(df["Variable"].isin(reg_variables)
+                 |
+                 (df["Variable"].str.contains('Exchange rate;', case=False, regex=True)
+                  &
+                  df["Variable"].str.contains('combined', case=False, regex=True)))
+                &
+                df["Scenario"].str.contains(scenario, case=False)]
+
+    else:
+        reg_variables = ["Central bank Intervention rate (policy interest rate) ; %(physical)",
+                         'Equity prices(physical)',
+                         'Gross Domestic Product (GDP)(physical)',
+                         'Inflation rate ; %(physical)',
+                         'Long term interest rate ; %(physical)']
+        df = df[(df["Variable"].isin(reg_variables)
+                 |
+                 (df["Variable"].str.contains('Exchange rate;', case=False, regex=True)
+                  &
+                  df["Variable"].str.contains('physical', case=False, regex=True)))
+                &
+                df["Scenario"].str.contains(scenario, case=False)]
+
+
+    df.drop(df.iloc[:, 0:4], axis=1, inplace=True)
+    df.drop("Unit", axis=1, inplace=True)
+    df.set_index("Variable", inplace=True)
+
+    reg_labels = ['pr', 'ep', 'rGDP', 'CPI', 'ltir']
+    mapping = {}
+    for i in range(0, len(reg_labels)):
+        try:
+            mapping[reg_labels[i]] = df.loc[reg_variables[i]]
+        except KeyError:
+            continue
+
+    working_df = pd.DataFrame(mapping)
+    predictions = model.predict(working_df)
+    return np.exp(predictions)
+
+
+scenario_list = ["Net Zero 2050", "Delayed transition", "Current Policies", "Fragmented World"]
+# US assets
 sp500 = create_model('SP500', 'US', ac='index')
 dgs10 = create_model('DGS10', 'US', ac='govbond')
 bbb = create_model('BAMLC0A4CBBBEY', 'US', ac='index')
 
+#Regress on NGFS scenario data
+#TODO Clean up code
 
+test = predict(bbb, 'US', 'Net Zero 2050')
+#TODO Add mixing for scenario's
 
-#TODO Regress on NGFS scenario data
