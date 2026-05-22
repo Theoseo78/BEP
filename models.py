@@ -49,32 +49,22 @@ def predict(model, region, scenario):
     df = df.loc[df['Region'] == nigem_regions[region]]
 
     if scenario in ['Net Zero 2050', 'Fragmented World', 'Delayed transition']:
-        reg_variables = ["Central bank Intervention rate (policy interest rate) ; %(combined)",
-                         'Equity prices(combined)',
-                         'Gross Domestic Product (GDP)(combined)',
-                         'Inflation rate ; %(combined)',
-                         'Long term interest rate ; %(combined)']
-        df = df[(df["Variable"].isin(reg_variables)
-                 |
-                 (df["Variable"].str.contains('Exchange rate;', case=False, regex=True)
-                  &
-                  df["Variable"].str.contains('combined', case=False, regex=True)))
-                &
-                df["Scenario"].str.contains(scenario, case=False)]
-
+        var_type = 'combined'
     else:
-        reg_variables = ["Central bank Intervention rate (policy interest rate) ; %(physical)",
-                         'Equity prices(physical)',
-                         'Gross Domestic Product (GDP)(physical)',
-                         'Inflation rate ; %(physical)',
-                         'Long term interest rate ; %(physical)']
-        df = df[(df["Variable"].isin(reg_variables)
-                 |
-                 (df["Variable"].str.contains('Exchange rate;', case=False, regex=True)
-                  &
-                  df["Variable"].str.contains('physical', case=False, regex=True)))
-                &
-                df["Scenario"].str.contains(scenario, case=False)]
+        var_type = 'physical'
+
+    reg_variables = [f"Central bank Intervention rate (policy interest rate) ; %({var_type})",
+                     f'Equity prices({var_type})',
+                     f'Gross Domestic Product (GDP)({var_type})',
+                     f'Inflation rate ; %({var_type})',
+                     f'Long term interest rate ; %({var_type})']
+    df = df[(df["Variable"].isin(reg_variables)
+             |
+             (df["Variable"].str.contains('Exchange rate;', case=False, regex=True)
+              &
+              df["Variable"].str.contains(var_type, case=False, regex=True)))
+            &
+            df["Scenario"].str.contains(scenario, case=False)]
 
 
     df.drop(df.iloc[:, 0:4], axis=1, inplace=True)
