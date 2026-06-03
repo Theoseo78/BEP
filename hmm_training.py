@@ -6,99 +6,132 @@ import numpy as np
 from hmmlearn.hmm import GaussianHMM
 from sklearn.utils import check_random_state
 
+# Surface temperature
 # https://wmo.int/resources/dashboards/global-mean-temperature-1850-2024
 # Compared to mean in 1850-1900
 
 # %%
-df = pd.read_csv(r"Historical data/mean_temp.csv")
-df.set_index("year", inplace=True)
-# Take the mean of the models
-df['mean'] = df.mean(axis=1)
+def create_histogram(file, bin_amount):
+    # file: csv file to use as training data
+    # csv contains only one column
+    # bin amount: dictate how many bins the data should have
 
-# Modify bins to account for values outside of min/max
-# Bin the observations in intervals of (a, b])
-min_temp, max_temp = df['mean'].min(), df['mean'].max()
-bin_amount = 10
-in_len = (max_temp - min_temp)/bin_amount
-# Define bins
-bins = np.linspace(min_temp, max_temp, bin_amount + 1)
-bins[0], bins[-1] = -np.inf, np.inf
-# Change first and last bins to include -inf, inf respectively
-# Use index to refer back to bins so it is compatible with the HMM
-df['bins'] = pd.cut(df['mean'], bins=bins, labels=False, right=True)
+    # Read csv into dataframe
+    df = pd.read_csv(r"Historical data/hmm training/" + file)
+    # Construct bins for histogram
+    data = df.iloc[:, 0]
+    min_val, max_val = data.min(), data.max()
+    bins = np.linspace(min_val, max_val, bin_amount + 1)
+    bins[0], bins[-1] = -np.inf, np.inf
+    # Create column with bins based on row value
 
-# TODO implement Hidden markov
+    df['bins'] = pd.cut(data, bins=bins, labels=False, right=True)
+    return df['bins'], bins
+
+
+def find_optimal_model(data, max_comp):
+    # data: numpy array of histogram bins
+    # max_comp: max amount components to use for HMM
+
+    # Set random seed for reproduction
+    rs = check_random_state(546)
+    best_ll, best_model = -np.inf, GaussianHMM()
+    for n in range(2, max_comp + 1):
+        # Sample multiple times per same value of n
+        for i in range(10):
+            h = GaussianHMM(n_components=n, covariance_type="full", n_iter=100, random_state=rs)
+            try:
+                h.fit(data)
+                score = h.score(data)
+            except:
+                score = -np.inf
+            # Look for highest log-likelihood
+            if best_ll < score:
+                best_ll = score
+                print(score)
+                best_model = h
+        print(f"Completed n = {n}")
+    return best_model
+
+
+def calculate_likelihood(v, file, bin_amount, max_comp):
+    # v: variable name
+    # file: csv file to use as training data
+    # csv contains only one column
+    # bin amount: dictate how many bins the data should have
+    # max_comp: max. components present in HMM
+
+    # Create histogram of data
+    data, bins = create_histogram(file, bin_amount)
+    # Transform data for HMM training
+    data = data.to_numpy()
+    data = data.reshape(len(data), 1)
+    # Find optimal model
+    model = find_optimal_model(data, max_comp)
+    # Map to correct NiGEM/IAM variable
+    # NiGEM variables depend on scenario
+
+    iam_vars = ["st", ]
+    nigem_vars = ["pr", "epi", "ltir", "rGDP", "er"]
+    var_map = {"st": "AR6 climate diagnostics|Surface Temperature ("
+                     "GSAT)|MAGICCv7.5.3|50.0th Percentile",
+               "pr": f"Central bank Intervention rate (policy interest rate) ; %",
+               "epi": f'Equity prices',
+               "ltir": f'Long term interest rate ; %',
+               "rGDP": f'Gross Domestic Product (GDP)'}
+
+    # Pull relevant data
+    if v in iam_vars:
+        test_df = pd.read_csv(r"NGFS data/IAM_working_set.csv")
+    elif v in nigem_vars:
+        test_df = pd.read_csv(r"NGFS data/NiGEM_working_set.csv")
+    else:
+        raise ValueError("Variable not in list of available variables")
+    temp = test_df[test_df["Variable"].str.contains(var_map[v], case=False, regex=False)]
+    temp = temp.drop(["Model", "Region", "Variable", "Unit", "Unnamed: 0"], axis=1)
+    temp = temp.groupby(["Scenario"], as_index=True).mean()
+
+    # Calculate log-likelihood per scenario
+    scenario_list = [
+        "Net Zero 2050",
+        "Delayed transition",
+        "Current Policies",
+        "Fragmented World",
+    ]
+    scores = {}
+    for i, row in temp.iterrows():
+        sc = str(row.name)
+        if sc not in scenario_list:
+            raise ValueError("Unexpected row name")
+        scenario_data = pd.cut(row, bins=bins, labels=False)
+        data = scenario_data.to_numpy()
+        data = data.reshape(len(scenario_data), 1)
+        z = model.predict(data)
+        scores[sc] = model.score(data)
+
+    # Normalize likelihood on sum
+    norm_fac = sum(scores.values())
+    for k, v in scores.items():
+        scores[k] = v / norm_fac
+    return scores
+
 # %%
-# Show the histogram
-fig, ax = plt.subplots(figsize=(12, 6))
-ax.hist(df['mean'], bins=10)
-ax.set_xlabel("Surface temperature (C)")
-ax.set_ylabel("Count")
-plt.show()
-# %%
-data = df["bins"].to_numpy()
-data = data.reshape(len(df), 1)
-
-# TODO Optimize amount of states using AIC, BIC and log-likelihood
-# Optimizing model for amount of components
-rs = check_random_state(546)
-max_comp = 10
-for n in range(2, max_comp + 1):
-    best_ll, best_model = -np.inf, hmm.GaussianHMM()
-    for i in range(10):
-        h = hmm.GaussianHMM(n_components=n, covariance_type="full", n_iter=100, random_state=rs)
-        out = h.fit(data)
-        score = h.score(data)
-        if best_ll < score:
-            best_ll = score
-            print(score)
-            best_model = h
-    print(f"Completed n = {n}")
+train, bin = create_histogram("mean_surface_temp.csv", 10)
+train = train.to_numpy()
+train = train.reshape(-1, 1)
+m = find_optimal_model(train, 10)
+print(m.n_components)
 # %%
 # Plot state counts of data
-pred = best_model.predict(data)
+pred = m.predict(train)
 fig, ax = plt.subplots(figsize=(12, 6))
-ax.hist(pred, bins=best_model.n_components)
+ax.hist(pred, bins=m.n_components)
 ax.set_xlabel("State")
 ax.set_ylabel("Count")
 plt.show()
+
 # %%
-# Wrangle data to extract necessary data
-iam_data = pd.read_csv(r"NGFS data/IAM_working_set.csv")
-temp = iam_data[iam_data["Variable"].str.contains("AR6 climate diagnostics|Surface Temperature ("
-                                                  "GSAT)|MAGICCv7.5.3|50.0th Percentile", case=False, regex=False)]
-temp = temp.drop(["Model", "Region", "Variable", "Unit", "Unnamed: 0"], axis=1)
-temp = temp.groupby(["Scenario"], as_index=True).mean()
-# %%
-# Predict temperature from NGFS and calculate likelihood
-scenario_list = [
-    "Net Zero 2050",
-    "Delayed transition",
-    "Current Policies",
-    "Fragmented World",
-]
-scores = {}
-for i, row in temp.iterrows():
-    sc = str(row.name)
-    scenario_data = pd.cut(row, bins=bins, labels=False)
-    data = scenario_data.to_numpy()
-    data = data.reshape(len(scenario_data), 1)
-    states = best_model.predict(data)
-    sc_score = best_model.score(data)
-
-    fig, ax = plt.subplots(figsize=(12, 6))
-    plt.title(sc)
-    ax.hist(states, bins=best_model.n_components)
-    ax.set_xlabel("State")
-    ax.set_ylabel("Count")
-    plt.show()
-
-    scores[sc] = best_model.score(data)
-
-# log-likelihood of -11,008
-norm_fac = sum(scores.values())
-for k, v in scores.items():
-    scores[k] = v/norm_fac
+scores = calculate_likelihood("st", "mean_surface_temp.csv", 10, 10)
 
 
 

@@ -1,0 +1,12 @@
+This file keeps track of custom variable names and what NiGem/IAM variable they represent.
+Names are case sensitive.
+Format: custom name: name in dataset
+-----------------------------------
+pr: Policy rate
+epi: Price index
+ltir: Long term interest rate
+cpi: Inflation/consumer price index
+rGDP: real gross domestic product
+er: Exchange rate into USD
+
+st: Surface temperature

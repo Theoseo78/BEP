@@ -5,6 +5,7 @@ from plotnine import *
 from plotnine import __version__ as p9__version__
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
+from sklearn.preprocessing import StandardScaler
 
 # scenario's
 # Net Zero 2050
@@ -13,7 +14,7 @@ import statsmodels.formula.api as smf
 # Fragmented World
 
 
-def create_model(name, region, **kwargs):
+def create_model(name, region, std=False, **kwargs):
     ac = kwargs.pop("ac", None)
     class_to_var = {'index': 'epi',
                     'govbond': 'ltir'}
@@ -31,14 +32,23 @@ def create_model(name, region, **kwargs):
         y = y.reindex(range(len(data)))
 
     data.insert(2, 'y', y[f'{name}'])
-
     # Work with log prices
-    formula = 'np.log(y) ~ pr + CPI + rGDP'
+    data['y'] = np.log(data['y'])
+    variables = ['pr', 'CPI', 'rGDP']
+    scalar = StandardScaler()
+
+    # Add additional variables, exclude some to prevent autocorrelation
     for asset_class, var in class_to_var.items():
         if not ac == asset_class:
-            formula += ' + ' + var
+            variables.append(var)
     if region != 'US':
-        formula += ' + er'
+        variables.append('er')
+    # Standardize data if needed
+    if std:
+        data[variables] = scalar.fit_transform(data[variables])
+        data['y'] = scalar.fit_transform(data[['y']])
+
+    formula = f'y ~ {'+'.join(variables)} + 0'
     return smf.ols(formula, data=data).fit()
 
 
@@ -89,6 +99,10 @@ scenario_list = ["Net Zero 2050", "Delayed transition", "Current Policies", "Fra
 sp500 = create_model('SP500', 'US', ac='index')
 dgs10 = create_model('DGS10', 'US', ac='govbond')
 bbb = create_model('BAMLC0A4CBBBEY', 'US', ac='index')
+
+sp500_std = create_model('SP500', 'US', True, ac='index')
+
+print(sp500_std.summary())
 
 #Regress on NGFS scenario data
 #TODO Clean up code
