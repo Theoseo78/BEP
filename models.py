@@ -4,6 +4,7 @@ import pandas as pd
 from plotnine import *
 from plotnine import __version__ as p9__version__
 import statsmodels.api as sm
+from hmm_training import calculate_mix_weights
 import statsmodels.formula.api as smf
 from sklearn.preprocessing import StandardScaler
 
@@ -107,6 +108,7 @@ print(sp500_std.summary())
 #Regress on NGFS scenario data
 #TODO Clean up code
 
-test = predict(bbb, 'US', 'Net Zero 2050')
+for sc in scenario_list:
+    test = predict(bbb, 'US', 'Net Zero 2050')
 #TODO Add mixing for scenario's
 

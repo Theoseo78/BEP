@@ -37,7 +37,7 @@ import pandas as pd
 model = "REMIND-MAgPIE 3.3-4.8"
 iam_regions = ["United", "Japan", "EU 28", "China", "World"]
 iam_regions_join = "|".join(iam_regions)
-iam_var_list = ["Emissions|C02", "Price|Carbon"]
+iam_var_list = ["Emissions|CO2", "Price|Carbon"]
 scenario_list = [
     "Net Zero 2050",
     "Delayed transition",
