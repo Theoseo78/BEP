@@ -10,3 +10,5 @@ rGDP: real gross domestic product
 er: Exchange rate into USD
 
 st: Surface temperature
+pem: Primary energy mix %
+ce: Carbon emissions (tonnes)

@@ -1,9 +1,9 @@
 import sys
 import numpy as np
 import pandas as pd
-from plotnine import *
-from plotnine import __version__ as p9__version__
-import statsmodels.api as sm
+# from plotnine import *
+# from plotnine import __version__ as p9__version__
+# import statsmodels.api as sm
 from hmm_training import calculate_mix_weights
 import statsmodels.formula.api as smf
 from sklearn.preprocessing import StandardScaler
@@ -49,16 +49,18 @@ def create_model(name, region, std=False, **kwargs):
         data[variables] = scalar.fit_transform(data[variables])
         data['y'] = scalar.fit_transform(data[['y']])
 
-    formula = f'y ~ {'+'.join(variables)} + 0'
+    formula = f'y ~ {' + '.join(variables)} + 0'
     return smf.ols(formula, data=data).fit()
 
 
 def predict(model, region, scenario):
+    # Map region string to NiGEM regions
     nigem_regions = {'US': 'NiGEM NGFS v1.24.2|United States',
                      'EU': "NiGEM NGFS v1.24.2|Europe"}
     df = pd.read_csv(f'NGFS data/NiGEM_working_set.csv')
     df = df.loc[df['Region'] == nigem_regions[region]]
 
+    # Scenario "Current Policies" only works for physical data, no transition data
     if scenario in ['Net Zero 2050', 'Fragmented World', 'Delayed transition']:
         var_type = 'combined'
     else:
@@ -77,10 +79,11 @@ def predict(model, region, scenario):
             &
             df["Scenario"].str.contains(scenario, case=False)]
 
-
+    # Drop unnecessary columns
     df.drop(df.iloc[:, 0:4], axis=1, inplace=True)
     df.drop("Unit", axis=1, inplace=True)
     df.set_index("Variable", inplace=True)
+    return df
 
     reg_labels = ['pr', 'ep', 'rGDP', 'CPI', 'ltir']
     mapping = {}
@@ -101,14 +104,21 @@ sp500 = create_model('SP500', 'US', ac='index')
 dgs10 = create_model('DGS10', 'US', ac='govbond')
 bbb = create_model('BAMLC0A4CBBBEY', 'US', ac='index')
 
-sp500_std = create_model('SP500', 'US', True, ac='index')
-
-print(sp500_std.summary())
+data = pd.read_csv('Historical data/US/US_historical.csv')
+test = predict(sp500, 'US', scenario_list[0])
+# sp500_std = create_model('SP500', 'US', True, ac='index')
+#
+# print(sp500_std.summary())
 
 #Regress on NGFS scenario data
-#TODO Clean up code
 
-for sc in scenario_list:
-    test = predict(bbb, 'US', 'Net Zero 2050')
-#TODO Add mixing for scenario's
+# %%
+# i = 0
+# preds = [None] * len(scenario_list)
+# weights = calculate_mix_weights()
+# for sc in scenario_list:
+#     preds[i] = weights[sc] * predict(sp500, "US", sc)
+#     i += 1
+# total = sum(preds)
+#
 
