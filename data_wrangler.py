@@ -6,6 +6,17 @@ import pandas as pd
 from functools import reduce
 import numpy as np
 # %%
+# US inflation rate
+df = pd.read_csv(r"Historical data/PCE_unedited.csv", header=0)
+df = df.transpose()
+dates = pd.date_range(start='2021-01-01', freq="MS", periods=60)
+new_df = pd.DataFrame(columns=["observation_date", "PCE"])
+new_df["observation_date"] = dates
+new_df["PCE"] = df.iloc[:, -1][1:].to_numpy()
+new_df.to_csv(r"Historical data/US/PCE.csv", index = False)
+
+
+# %%
 # Surface temperature
 # https://wmo.int/resources/dashboards/global-mean-temperature-1850-2024
 df = pd.read_csv(r"Historical data/hmm training/mean_temp.csv", index_col="year")

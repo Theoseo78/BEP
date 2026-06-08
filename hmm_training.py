@@ -146,28 +146,28 @@ def calculate_mix_weights():
                 mean_scores[k] += v / len(variable_scores)
     return mean_scores
 
-# %%
-# train, bin = create_histogram("historical_ce.csv", 10)
-# fig, ax = plt.subplots(figsize=(12, 6))
-# ax.hist(data)
-# ax.set_xlabel(f"{file}")
-# ax.set_ylabel("Count")
-# plt.show()
-# %%
-# train = train.to_numpy()
-# train = train.reshape(-1, 1)
-# m = find_optimal_model(train, 10)
-# print(m.n_components)
-# %%
-# Plot state counts of data
-# pred = m.predict(train)
-# fig, ax = plt.subplots(figsize=(12, 6))
-# ax.hist(pred, bins=m.n_components)
-# ax.set_xlabel("State")
-# ax.set_ylabel("Count")
-# plt.show()
+if __name__ == "__main__":
+    data, file = ("", "")
+    train, bin = create_histogram("historical_ce.csv", 10)
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.hist(data)
+    ax.set_xlabel(f"{file}")
+    ax.set_ylabel("Count")
+    plt.show()
 
-# %%
+    train = train.to_numpy()
+    train = train.reshape(-1, 1)
+    m = find_optimal_model(train, 10)
+    print(m.n_components)
+
+    # Plot state counts of data
+    pred = m.predict(train)
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.hist(pred, bins=m.n_components)
+    ax.set_xlabel("State")
+    ax.set_ylabel("Count")
+    plt.show()
+
 
 
 

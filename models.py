@@ -20,7 +20,7 @@ def create_model(name, region, std=False, **kwargs):
     class_to_var = {'index': 'epi',
                     'govbond': 'ltir'}
     # Reading the data
-    data = pd.read_csv(f'Historical data/{region}/{region}_historical.csv')
+    data = pd.read_csv(f'Historical data/{region}_economical_historical.csv')
     y = pd.read_csv(f'Historical data/{region}/{name}.csv')
 
     # Correct if there is mismatch in size
@@ -83,7 +83,6 @@ def predict(model, region, scenario):
     df.drop(df.iloc[:, 0:4], axis=1, inplace=True)
     df.drop("Unit", axis=1, inplace=True)
     df.set_index("Variable", inplace=True)
-    return df
 
     reg_labels = ['pr', 'ep', 'rGDP', 'CPI', 'ltir']
     mapping = {}
@@ -98,27 +97,30 @@ def predict(model, region, scenario):
     return np.exp(predictions)
 
 
-scenario_list = ["Net Zero 2050", "Delayed transition", "Current Policies", "Fragmented World"]
-# US assets
-sp500 = create_model('SP500', 'US', ac='index')
-dgs10 = create_model('DGS10', 'US', ac='govbond')
-bbb = create_model('BAMLC0A4CBBBEY', 'US', ac='index')
+if __name__ == '__main__':
+    scenario_list = ["Net Zero 2050", "Delayed transition", "Current Policies", "Fragmented World"]
+    # US assets
+    sp500 = create_model('SP500', 'US', ac='index')
+    dgs10 = create_model('DGS10', 'US', ac='govbond')
+    bbb = create_model('BAMLC0A4CBBBEY', 'US', ac='index')
 
-data = pd.read_csv('Historical data/US/US_historical.csv')
-test = predict(sp500, 'US', scenario_list[0])
-# sp500_std = create_model('SP500', 'US', True, ac='index')
-#
-# print(sp500_std.summary())
+    print(bbb.summary())
 
-#Regress on NGFS scenario data
+    data = pd.read_csv('Historical data/US/US_historical.csv')
+    test = predict(sp500, 'US', scenario_list[0])
+    # sp500_std = create_model('SP500', 'US', True, ac='index')
+    #
+    # print(sp500_std.summary())
 
-# %%
-# i = 0
-# preds = [None] * len(scenario_list)
-# weights = calculate_mix_weights()
-# for sc in scenario_list:
-#     preds[i] = weights[sc] * predict(sp500, "US", sc)
-#     i += 1
-# total = sum(preds)
-#
+    #Regress on NGFS scenario data
+
+    # %%
+    # i = 0
+    # preds = [None] * len(scenario_list)
+    # weights = calculate_mix_weights()
+    # for sc in scenario_list:
+    #     preds[i] = weights[sc] * predict(sp500, "US", sc)
+    #     i += 1
+    # total = sum(preds)
+    #
 
