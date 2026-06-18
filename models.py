@@ -21,7 +21,7 @@ def create_model(name, region, std=False, **kwargs):
                     'govbond': 'ltir'}
     # Reading the data
     data = pd.read_csv(f'Historical data/{region}_economical_historical.csv')
-    y = pd.read_csv(f'Historical data/{region}/{name}.csv')
+    y = pd.read_csv(f'Historical data/{region}/Stock data/{name}.csv')
 
     # Correct if there is mismatch in size
     if len(y) < len(data):
