@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import time
 from models import create_model, ngfs_pull
-from hmm_training import find_optimal_model, calculate_likelihood
+from hmm_training import find_optimal_model
 from sklearn.utils import check_random_state
 from scipy.spatial.distance import mahalanobis
 
@@ -200,6 +200,31 @@ def foo():
     # Perform optimization
     return
 
+def calc_likelihood(region):
+    # region: what geographical region to consider
+
+    # Calculates the relative log-likelihood of a scenario happening if it has paths assigned to it
+    # Log-likelihood is calculated using the HMM for the respective region
+    # Log-likelihood based on macroeconomic variables
+    scenario_paths = assign_paths(region)
+    scenario_scores = {}
+    for s, paths in scenario_paths.items():
+        if len(paths) > 0:
+            scenario_scores[s] = float()
+            # Call model to calculate log-likelihood
+            s_data = ngfs_pull(region, s)
+            s_data_arr = s_data.to_numpy().reshape(-1, len(s_data.columns))
+            scenario_scores[s] = opt_hmm[region].score(s_data_arr)
+        else:
+            continue
+    # Rescale log-likelihood when done
+    norm_fac = sum(scenario_scores.values())
+    for k, v in scenario_scores.items():
+        scenario_scores[k] = v / norm_fac
+    return scenario_scores
+
+# TODO: Implement likelihood calculation for non-empty scenario's
+
 
 # TODO: Complete step 4, 5 in the mail
 # TODO: Perform sensitivity analysis
@@ -209,8 +234,9 @@ roll_macro("US", J, t_end)
 # %%
 US_roll = create_hist_dists("US")
 # %%
-prior = create_prior("US", 5, 0.5)
+prior = create_prior("US", 3, 0.1)
 patapim_too = assign_paths("US")
+patapim_tree = calc_likelihood("US")
 # %%
 patapim = ngfs_predictions("US", t_end)
 # %%
