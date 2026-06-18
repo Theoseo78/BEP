@@ -6,6 +6,8 @@ from models import create_model, ngfs_pull
 from hmm_training import find_optimal_model
 from sklearn.utils import check_random_state
 from scipy.spatial.distance import mahalanobis
+from scipy.optimize import LinearConstraint
+
 
 # %%
 # Initialize variables
@@ -224,6 +226,15 @@ def calc_likelihood(region):
     return scenario_scores
 
 # TODO: Implement likelihood calculation for non-empty scenario's
+
+def form_constraints(region, eps):
+    # region: what geographical region to consider
+
+    # Formulates constraints for optimizing KL-divergence
+    # Sum of mixing constants equal the relative log-likelihood
+    # Mixing of macroeconomic variables are within a certain bound of the values present in the scenario's
+    c_list = []
+    return
 
 
 # TODO: Complete step 4, 5 in the mail

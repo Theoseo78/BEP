@@ -53,7 +53,7 @@ def create_model(name, region, std=False, **kwargs):
     return smf.ols(formula, data=data).fit()
 
 
-def predict(model, region, scenario):
+def ngfs_pull(region, scenario):
     # Map region string to NiGEM regions
     nigem_regions = {'US': 'NiGEM NGFS v1.24.2|United States',
                      'EU': "NiGEM NGFS v1.24.2|Europe"}
@@ -84,7 +84,7 @@ def predict(model, region, scenario):
     df.drop("Unit", axis=1, inplace=True)
     df.set_index("Variable", inplace=True)
 
-    reg_labels = ['pr', 'ep', 'rGDP', 'CPI', 'ltir']
+    reg_labels = ['pr', 'epi', 'rGDP', 'CPI', 'ltir']
     mapping = {}
     for i in range(0, len(reg_labels)):
         try:
@@ -93,21 +93,24 @@ def predict(model, region, scenario):
             continue
 
     working_df = pd.DataFrame(mapping)
-    predictions = model.predict(working_df)
-    return np.exp(predictions)
+    # Have only observations from year 2026+
+    return working_df.iloc[4:]
 
 
 if __name__ == '__main__':
-    scenario_list = ["Net Zero 2050", "Delayed transition", "Current Policies", "Fragmented World"]
-    # US assets
-    sp500 = create_model('SP500', 'US', ac='index')
-    dgs10 = create_model('DGS10', 'US', ac='govbond')
-    bbb = create_model('BAMLC0A4CBBBEY', 'US', ac='index')
+    test = ngfs_pull("US", "Net Zero 2050")
 
-    print(bbb.summary())
 
-    data = pd.read_csv('Historical data/US/US_historical.csv')
-    test = predict(sp500, 'US', scenario_list[0])
+    # scenario_list = ["Net Zero 2050", "Delayed transition", "Current Policies", "Fragmented World"]
+    # # US assets
+    # sp500 = create_model('SP500', 'US', ac='index')
+    # dgs10 = create_model('DGS10', 'US', ac='govbond')
+    # bbb = create_model('BAMLC0A4CBBBEY', 'US', ac='index')
+    #
+    # print(bbb.summary())
+    #
+    # data = pd.read_csv('Historical data/US/US_historical.csv')
+    # test = predict(sp500, 'US', scenario_list[0])
     # sp500_std = create_model('SP500', 'US', True, ac='index')
     #
     # print(sp500_std.summary())
