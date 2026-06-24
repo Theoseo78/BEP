@@ -28,7 +28,7 @@ def create_histogram(file, bin_amount):
 
 
 def find_optimal_model(data, max_comp):
-    # data: numpy array of histogram bins
+    # data: numpy array data points
     # max_comp: max amount components to use for HMM
 
     # Set random seed for reproduction

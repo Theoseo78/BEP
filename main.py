@@ -1,4 +1,6 @@
 # Main file for working with all data
+from typing import Any, Callable
+
 import pandas as pd
 import numpy as np
 import time
@@ -6,7 +8,8 @@ from models import create_model, ngfs_pull
 from hmm_training import find_optimal_model
 from sklearn.utils import check_random_state
 from scipy.spatial.distance import mahalanobis
-from scipy.optimize import LinearConstraint
+from scipy.optimize import minimize, LinearConstraint
+from scipy.special import rel_entr
 
 
 # %%
@@ -61,7 +64,7 @@ def roll_macro(region, npaths, horizon):
     # Calculate length of each path based on specified horizon
     n_samp = (horizon - 2026 + 1) * 12
 
-    # Create numpy array with size (number of years, samples per path, number of paths)
+    # Create numpy array with size (number of years, number of variables, number of paths)
     # Data aggregated on yearly average
     # Keeps track of rolled forward macroeconomic variables
     p_arr = np.zeros(shape=(horizon - 2026 + 1, len(df.columns), npaths))
@@ -197,45 +200,123 @@ def assign_paths(region):
     print(f"It took {time.time() - start_time} seconds assign all paths")
     return scenario_paths
 
-def foo():
-    # Combine all steps in one
-    # Perform optimization
-    return
-
-def calc_likelihood(region):
+def calc_likelihood(regions, s_paths):
     # region: what geographical region to consider
 
     # Calculates the relative log-likelihood of a scenario happening if it has paths assigned to it
     # Log-likelihood is calculated using the HMM for the respective region
     # Log-likelihood based on macroeconomic variables
-    scenario_paths = assign_paths(region)
-    scenario_scores = {}
-    for s, paths in scenario_paths.items():
-        if len(paths) > 0:
-            scenario_scores[s] = float()
-            # Call model to calculate log-likelihood
-            s_data = ngfs_pull(region, s)
-            s_data_arr = s_data.to_numpy().reshape(-1, len(s_data.columns))
-            scenario_scores[s] = opt_hmm[region].score(s_data_arr)
-        else:
-            continue
+    scenario_scores = {s: float() for s in scenario_list}
+    for r in regions:
+        for s, paths in s_paths.items():
+            if len(paths) > 0:
+                # Call model to calculate log-likelihood
+                s_data = ngfs_pull(r, s)
+                s_data_arr = s_data.to_numpy().reshape(-1, len(s_data.columns))
+                scenario_scores[s] += opt_hmm[r].score(s_data_arr)
+            else:
+                continue
     # Rescale log-likelihood when done
     norm_fac = sum(scenario_scores.values())
     for k, v in scenario_scores.items():
         scenario_scores[k] = v / norm_fac
     return scenario_scores
 
-# TODO: Implement likelihood calculation for non-empty scenario's
+# TODO: Build matrices used for constraints
 
-def form_constraints(region, eps):
-    # region: what geographical region to consider
+def create_matrices(regions, s_paths, s_scores):
+    # region: list of regions
+    # s_paths: dictionary of {scenario: set(path_indices)}
+    # s_scores: relative log-likelihood of scenario's
 
-    # Formulates constraints for optimizing KL-divergence
-    # Sum of mixing constants equal the relative log-likelihood
-    # Mixing of macroeconomic variables are within a certain bound of the values present in the scenario's
-    c_list = []
-    return
+    # Create arrays that form the constraints and target values
 
+    # Create selection array for probability of scenario's
+    S = len(s_paths.keys())
+    G_prob = np.zeros(S, J)
+    b_prob = np.zeros(S)
+    v = 0
+    for s, paths in s_paths.items():
+        b_prob[v] = s_scores[s]
+        for p in paths:
+            G_prob[v][p] += 1
+        v += 1
+
+    # Create array and vector of macroeconomic variables
+    G_mean = np.stack([np.load(f"Prior distributions/{region}_mixed_means.npy") for region in regions])
+    G = np.stack(G_prob, G_mean)
+
+
+# def form_constraints(region, s_paths,s_scores, eps):
+#     # region: what geographical region to consider
+#
+#     # Formulates constraints for optimizing KL-divergence
+#     # Sum of mixing constants equal the relative log-likelihood
+#     # Mixing of macroeconomic variables are within a certain bound of the values present in the scenario's
+#     global scenario_list, J
+#     start_time = time.time()
+#     macro_paths = np.load(f"Prior distributions/{region}_hist_forward.npy")
+#     c_list = [LinearConstraint] * (len(scenario_list) * (1 + macro_paths.shape[1]))
+#     n = 0
+#     for s, paths in s_paths.items():
+#         s_data = ngfs_pull(region, s)
+#         if len(paths) > 0:
+#             prob_arr = np.zeros(shape=J)
+#             for p in paths:
+#                 # Formulate constraint for score being equal
+#                 prob_arr[p] = 1
+#             c_list[n] = LinearConstraint(prob_arr, lb=s_scores[s], ub=s_scores[s])
+#             n += 1
+#             for i in range(macro_paths.shape[1]):
+#                 # Formulate constraint per macroeconomic variable
+#                 macro_paths[:, i, :] = 1
+#                 s_macro = s_data.iloc[:, i].to_numpy()
+#                 # Create (year, path) matrix
+#                 arr = np.zeros(shape=(macro_paths.shape[0], macro_paths.shape[2]))
+#                 for p in paths:
+#                     arr[:, p] = macro_paths[:, i, p]
+#                 c_list[n] = LinearConstraint(arr, lb=s_macro-eps, ub=s_macro+eps)
+#                 n += 1
+#
+#     print(f"It took {time.time() - start_time} seconds to formulate all constraints")
+#     return c_list[:n]
+#
+# def minimize_kl(regions, constraints):
+#     # regions: list of geographical regions
+#     # constraints: list of linear constraints
+#
+#     # Minimizes relative entropy given constraints
+#
+#     # Construct array containing all assets distributions: reference distribution
+#     # Shape: (years, assets)
+#     global stocks, t_end, J
+#     start_time = time.time()
+#     ref_arr = np.zeros([t_end - 2026 + 1, sum(len(stocks[r]) for r in regions)])
+#     mpath_arr = np.zeros([sum(len(stocks[r]) for r in regions), t_end - 2026 + 1, J])
+#     n, p = 0, 0
+#     for region in regions:
+#         if region not in stocks.keys():
+#             continue
+#         ref_data = np.load(f"Prior distributions/{region}_mixed_dists.npy")
+#         paths = np.load(f"Prior distributions/{region}_mixed_means.npy")
+#         mpath_arr[p:p + len(paths)] = paths
+#         p += len(paths) + 1
+#         for i in range(ref_data.shape[0]):
+#             # n'th column contains means of the stock
+#             ref_arr[:, n] = ref_data[i, :, 0]
+#             n += 1
+#
+#     # Formulate objective function
+#     # Input: vector of mixing weights
+#
+#     def f(y):
+#         # Mean of all KL-divergences
+#         return np.mean(list(sum(rel_entr(ref_arr[:, i], mpath_arr[i].dot(y))) for i in range(ref_arr.shape[1])))
+#     # Initial guess is uniform weights
+#     x0 = np.array([1/J] * J)
+#     res = minimize(f, x0)
+#     print(f"It took {time.time() - start_time} seconds to complete the optimization")
+#     return res
 
 # TODO: Complete step 4, 5 in the mail
 # TODO: Perform sensitivity analysis
@@ -247,10 +328,15 @@ US_roll = create_hist_dists("US")
 # %%
 prior = create_prior("US", 3, 0.1)
 patapim_too = assign_paths("US")
-patapim_tree = calc_likelihood("US")
+patapim_tree = calc_likelihood("US", patapim_too)
+# patafour = form_constraints("US", patapim_too, patapim_tree, 5)
+# %%
+# final_patapim = minimize_kl(stocks.keys(), patafour)
+# %%
+dat = ngfs_pull("US", "Net Zero 2050")
 # %%
 patapim = ngfs_predictions("US", t_end)
 # %%
-
-# %%
-dat = ngfs_pull("US", "Delayed transition")
+test = np.load(f"Prior distributions/US_hist_forward.npy")
+h, m, j = test.shape
+test2 = test.reshape(h * m, j)
