@@ -196,6 +196,10 @@ def assign_paths(region):
                 best_scenario = s
         # Add index to appropriate set
         scenario_paths[best_scenario].add(i)
+    # Remove all scenario's without a path
+    for s in scenario_list:
+        if len(scenario_paths[s]) == 0:
+            scenario_paths.pop(s)
 
     print(f"It took {time.time() - start_time} seconds assign all paths")
     return scenario_paths
@@ -232,19 +236,36 @@ def create_matrices(regions, s_paths, s_scores):
     # Create arrays that form the constraints and target values
 
     # Create selection array for probability of scenario's
-    S = len(s_paths.keys())
-    G_prob = np.zeros(S, J)
-    b_prob = np.zeros(S)
+    # Work using scenario's passed from scores
+    scenario_lst = s_paths.keys()
+    s = len(scenario_lst)
+    g_prob = np.zeros((s, J))
+    b_prob = np.zeros(s)
     v = 0
     for s, paths in s_paths.items():
         b_prob[v] = s_scores[s]
         for p in paths:
-            G_prob[v][p] += 1
+            g_prob[v][p] += 1
         v += 1
 
+
     # Create array and vector of macroeconomic variables
-    G_mean = np.stack([np.load(f"Prior distributions/{region}_mixed_means.npy") for region in regions])
-    G = np.stack(G_prob, G_mean)
+    for r in regions:
+        hist_dat = np.load(f"Prior distributions/{r}_hist_forward.npy")
+        v = 0
+        for s in scenario_list:
+            if not abs(s_scores[s]) > 0:
+                continue
+            # Take means over the years to get characteristic values
+            scenario_macro = np.mean(ngfs_pull(r, s).to_numpy())
+            hist_dat = np.mean(hist_dat, axis=0)
+            selection = np.tile(g_prob[v].T, (hist_dat.shape[0], 1))
+
+            return hist_dat * selection
+            v += 1
+    g = np.stack(g_prob, g_mean)
+    b = b_prob
+    return g, b
 
 
 # def form_constraints(region, s_paths,s_scores, eps):
@@ -327,8 +348,11 @@ roll_macro("US", J, t_end)
 US_roll = create_hist_dists("US")
 # %%
 prior = create_prior("US", 3, 0.1)
+# %%
 patapim_too = assign_paths("US")
-patapim_tree = calc_likelihood("US", patapim_too)
+patapim_tree = calc_likelihood(["US"], patapim_too)
+# %%
+patafour = create_matrices(region_lst, patapim_too, patapim_tree)
 # patafour = form_constraints("US", patapim_too, patapim_tree, 5)
 # %%
 # final_patapim = minimize_kl(stocks.keys(), patafour)
@@ -336,7 +360,3 @@ patapim_tree = calc_likelihood("US", patapim_too)
 dat = ngfs_pull("US", "Net Zero 2050")
 # %%
 patapim = ngfs_predictions("US", t_end)
-# %%
-test = np.load(f"Prior distributions/US_hist_forward.npy")
-h, m, j = test.shape
-test2 = test.reshape(h * m, j)
