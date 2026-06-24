@@ -2,11 +2,14 @@ import numpy as np
 import pandas as pd
 import sys
 
-regional_files = {"US": {"DJIA_NBD20171201": "epi",
-                         "IRLTLT01USM156N": "ltir",
-                         "FEDFUNDS": "pr",
+# Correct order of variables: ['pr', 'epi', 'rGDP', 'CPI', 'ltir']
+
+regional_files = {"US": {"FEDFUNDS": "pr",
+                         "DJIA_NBD20171201": "epi",
+                         "GDPC1": "rGDP",
                          "PCE": "CPI",
-                         "GDPC1": "rGDP"},
+                         "IRLTLT01USM156N": "ltir",
+                         },
                   "EU": {}, }
 
 #TODO: fix the data so that they are in the same order of magnitude of 2022
@@ -35,7 +38,7 @@ def create_historical(region):
     dates_lst = pd.date_range(start='2021-01-01', freq="MS", periods=60)
     for file_name, vname in regional_files[region].items():
         # Map file to correct variable name
-        df = pd.read_csv(f'Historical data/{region}/' + file_name + '.csv')
+        df = pd.read_csv(f'Historical data/{region}/Macro economical data/' + file_name + '.csv')
 
         # Interpolate dataframe if it doesn't contain 60 entries (60 months over 5 years)
         if len(df) < 60:
