@@ -49,7 +49,7 @@ def create_model(name, region, std=False, **kwargs):
         data[variables] = scalar.fit_transform(data[variables])
         data['y'] = scalar.fit_transform(data[['y']])
 
-    formula = f'y ~ {' + '.join(variables)} + 0'
+    formula = f'y ~ {' + '.join(variables)} '
     return smf.ols(formula, data=data).fit()
 
 
@@ -103,11 +103,13 @@ if __name__ == '__main__':
 
     # scenario_list = ["Net Zero 2050", "Delayed transition", "Current Policies", "Fragmented World"]
     # # US assets
-    # sp500 = create_model('SP500', 'US', ac='index')
-    # dgs10 = create_model('DGS10', 'US', ac='govbond')
-    # bbb = create_model('BAMLC0A4CBBBEY', 'US', ac='index')
+    sp500 = create_model('SP500', 'US', ac='index')
+    dgs10 = create_model('DGS10', 'US', ac='govbond')
+    bbb = create_model('BAMLC0A4CBBBEY', 'US', ac='index')
     #
-    # print(bbb.summary())
+    print(sp500.summary())
+    print(dgs10.summary())
+    print(bbb.summary())
     #
     # data = pd.read_csv('Historical data/US/US_historical.csv')
     # test = predict(sp500, 'US', scenario_list[0])
