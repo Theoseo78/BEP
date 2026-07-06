@@ -14,8 +14,6 @@ new_df = pd.DataFrame(columns=["observation_date", "PCE"])
 new_df["observation_date"] = dates
 new_df["PCE"] = df.iloc[:, -1][1:].to_numpy()
 new_df.to_csv(r"Historical data/US/PCE.csv", index = False)
-
-
 # %%
 # Surface temperature
 # https://wmo.int/resources/dashboards/global-mean-temperature-1850-2024
@@ -52,3 +50,13 @@ df = pd.read_csv(r"Historical data/hmm training/annual-co2-emissions-per-country
 df.drop(columns=["Entity", "Code"], inplace=True)
 df = df/10e6
 df.to_csv(r"Historical data/hmm training/historical_ce.csv", index = True)
+# %%
+# EU long term interest rate
+df = pd.read_csv(r"Historical data/EU/Macro economic data/ECB_pr_unedited.csv")
+df.ffill(inplace=True)
+df.to_csv(r"Historical data/EU/Macro economic data/ECB_pr.csv")
+# %%
+# EU to USD
+df = pd.read_csv(r"Historical data/EU/Macro economic data/ECB_er_unedited.csv")
+df.iloc[:, -1] = df.iloc[:, -1].apply(lambda x: x/1.1836)
+df.to_csv(r"Historical data/EU/Macro economic data/ECB_er.csv")

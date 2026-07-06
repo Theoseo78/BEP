@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from hmmlearn.hmm import GaussianHMM
+from rich import region
 from sklearn.utils import check_random_state
 
 
@@ -33,7 +34,8 @@ def find_optimal_model(data, max_comp):
 
     # Set random seed for reproduction
     rs = check_random_state(546)
-    best_ll, best_model = -np.inf, GaussianHMM()
+    best_bic, best_model = np.inf, GaussianHMM()
+    best_ll = -np.inf
     for n in range(2, max_comp + 1):
         # Sample multiple times per same value of n
         for i in range(10):
@@ -41,12 +43,16 @@ def find_optimal_model(data, max_comp):
             try:
                 h.fit(data)
                 score = h.score(data)
+                bic = h.bic(data)
             except:
+                bic = np.inf
                 score = -np.inf
             # Look for highest log-likelihood
-            if best_ll < score:
+            if best_bic > bic:
+                best_bic = bic
                 best_ll = score
                 best_model = h
+    print(f"Model has {best_model.n_components} states\nBIC = {best_bic}, ll = {best_ll}")
     return best_model
 
 def pull_data(v):

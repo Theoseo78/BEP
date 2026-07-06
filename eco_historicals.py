@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import sys
 
-# Correct order of variables: ['pr', 'epi', 'rGDP', 'CPI', 'ltir']
+# Correct order of variables: ['pr', 'epi', 'er' 'rGDP', 'CPI', 'ltir']
 
 regional_files = {"US": {"FEDFUNDS": "pr",
                          "DJIA_NBD20171201": "epi",
@@ -10,7 +10,13 @@ regional_files = {"US": {"FEDFUNDS": "pr",
                          "PCE": "CPI",
                          "IRLTLT01USM156N": "ltir",
                          },
-                  "EU": {}, }
+                  "EU": {"ECB_pr": "pr",
+                         "ECB_epi": "epi",
+                         "ECB_er": "er",
+                         "ECB_cpi": "CPI",
+                         "ECB_ltir": "ltir",
+                         }
+    ,}
 
 #TODO: fix the data so that they are in the same order of magnitude of 2022
 # Using annual data might be the way to go
@@ -25,6 +31,8 @@ regional_files = {"US": {"FEDFUNDS": "pr",
 
 # See "notes on data.txt" for extra notes
 
+# LAST COLUMN MUST BE THE COLUMN CONTAINING THE OBSERVATIONS
+
 def create_historical(region):
     # Read csv
     # Apply correct mapping
@@ -38,7 +46,7 @@ def create_historical(region):
     dates_lst = pd.date_range(start='2021-01-01', freq="MS", periods=60)
     for file_name, vname in regional_files[region].items():
         # Map file to correct variable name
-        df = pd.read_csv(f'Historical data/{region}/Macro economical data/' + file_name + '.csv')
+        df = pd.read_csv(f'Historical data/{region}/Macro economic data/' + file_name + '.csv')
 
         # Interpolate dataframe if it doesn't contain 60 entries (60 months over 5 years)
         if len(df) < 60:
@@ -59,14 +67,14 @@ def create_historical(region):
         pdiff = ["epi", "er", "rGDP"]
         # In NiGEM data, 2022 is considered base year
         # 2022-12-01 as "end of period" aggregation
-        base = df[df.observation_date == "2022-12-01"].to_numpy()
-        base = base[0][-1]
+        # Row 23 corresponds to that date
+        base = df.iloc[23, -1]
 
         # Apply appropriate mapping for
         if vname in abdiff:
-            df[vname] = df[file_name] - base
+            df[vname] = df.iloc[:, -1] - base
         elif vname in pdiff:
-            df[vname] = (df[file_name] / base - 1) * 100
+            df[vname] = (df.iloc[:, -1] / base - 1) * 100
         else:
             raise ValueError("Variable not in list of available variables")
         cols[k] = df.iloc[:, -1].to_numpy()
@@ -76,7 +84,7 @@ def create_historical(region):
     historical.to_csv(f'Historical data/{region}_economical_historical.csv')
     return historical
 if __name__ == "__main__":
-    t = create_historical("US")
+    t = create_historical("EU")
 
 
 
