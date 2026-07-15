@@ -66,11 +66,14 @@ def roll_macro(region, npaths, horizon):
 
     # Calculate length of each path based on specified horizon
     n_samp = (horizon - 2026 + 1) * 12
+    df = pd.read_csv(f"Historical data/{region}_economical_historical.csv", index_col="Unnamed: 0")
+
 
     # Create numpy array with size (number of years, number of variables, number of paths)
     # Data aggregated on yearly average
     # Keeps track of rolled forward macroeconomic variables
     p_arr = np.zeros(shape=(horizon - 2026 + 1, len(df.columns), npaths))
+
 
     # Create numpy array with keeping track of means drawn from model.predict
     # Shape = (assets, years, paths)
@@ -115,14 +118,46 @@ def create_hist_dists(region):
     np.save(f"Prior distributions/{region}_hist_dists", mv_agg)
     return mv_agg
 
+def create_ngfs_data(region, t_end):
+    # Stores NGFS data based on simulated macro-economical data and differences stored in the NGFS datasets
+    # The data representing the scenarios is given by the differences reported in the dataset,
+    # as well as the averages of the paths
+    global scenario_list, stocks, models
+
+    # Sort variables based on measured unit stated in the NGFS documentation
+    # Abs diff: pr, CPI, ltir,
+    abdiff = ["pr", "CPI", "ltir"]
+    # % diff: epi, er (US data set has none), gdp,
+    pdiff = ["epi", "er", "rGDP"]
+    # Retrieve means of simulated paths
+    sim_paths = np.load(f'Prior distributions/{region}_hist_forward.npy').mean(axis=-1).T
+    for s in scenario_list:
+        diffs = ngfs_pull(region, s)
+        eco_vars = diffs.columns
+        new_df = diffs.copy()
+        i = 0
+        for v in eco_vars:
+            if v in abdiff:
+                new_df[v] = sim_paths[i] + diffs[v]
+            elif v in pdiff:
+                new_df[v] = sim_paths[i] * (1 + diffs[v]/100)
+            i += 1
+        return new_df, diffs
+        new_df.to_csv(f'NGFS data/{region}_{s}.csv')
+
+
 def ngfs_predictions(region, horizon):
     # region: what geographical region to consider
 
+    # Predicts asset returns based on NGFS scenarios
+
+
     global scenario_list, stocks, models
+
     # Assign each scenario its own predictions
     scenario_preds = {s: np.zeros(shape=(len(stocks[region]), (horizon - 2026 + 1))) for s in scenario_list}
     for s in scenario_list:
-        data = ngfs_pull(region, s)
+        data = pd.read_csv(f'NGFS data/{region}_{s}.csv')
         v = 0
         for asset in models[region]:
             preds = models[region][asset].predict(data)
@@ -153,7 +188,7 @@ def create_prior(regions, scale, ratio):
             rng = np.random.default_rng()
             # Generate noise per scenario
             for s in scenario_list:
-                data = ngfs_pull(region, s)
+                data = pd.read_csv(f'NGFS data/{region}_{s}.csv')
                 sc_distribution = models[region][asset[0]].get_prediction(data)
                 sc_mean, sc_var = sc_distribution.predicted_mean, np.diag((scale * sc_distribution.se)**2)
                 draws = rng.multivariate_normal(sc_mean, sc_var, size=npaths)
@@ -170,9 +205,11 @@ def create_prior(regions, scale, ratio):
 
 def k_means_paths(regions, horizon):
     # regions: list of economical regions
-    start_time = time.time()
+
     # Assign paths to scenario's by using k-means clustering
     # The centroids are the scenario predictions
+
+    start_time = time.time()
     predictions = {r: ngfs_predictions(r, horizon) for r in regions}
     # Concatenate the predictions for all assets per region into one vector for centroids
     pred_vectors = {s: np.concatenate([np.concatenate(predictions[r][s]) for r in regions]) for s in scenario_list}
@@ -330,7 +367,7 @@ def create_general_matrices(regions, s_paths, s_scores, eps):
             # Multiply element-wise with selection matrix to select the assigned paths
             # Account for lower bound
             g_mean = np.vstack([hist_dat, -1 * hist_dat])
-            char_vals = ngfs_pull(r, sc).to_numpy()[-1, :]
+            char_vals = pd.read_csv(f'NGFS data/{r}_{sc}.csv').to_numpy()[-1, :]
             b_mean = np.concatenate([(1 + eps) * char_vals, -(1 - eps) * char_vals])
             # Only have the positive values be the selection matrix
             selection = np.tile(g_prob[0], (2*hist_dat.shape[0], 1))
@@ -399,23 +436,29 @@ def create_portfolio(mu, sigma, delta):
                             constraints=({'type': 'eq', 'fun': lambda x: sum(x)-1}))
     return port_weights.x
 
+# TODO: Perform sensitivity analysis
 def compare_portfolios():
     pass
 
 def glide_path():
     pass
 
-# TODO: Perform sensitivity analysis
+
 
 # All comments containing the double percent signs are read as an individual cell of code by the PyCharm IDE (and other IDE's)
 # This is used to run steps of the model individually, as certain steps (primarily step one) can take a very long time
 
+# %%
 if __name__ == '__main__':
     # %%
     # Overview of main.py
     # Step one: create macro-economic paths per region
     for region in region_lst:
-        roll_macro("EU", J, t_end)
+        roll_macro(region, J, t_end)
+    # %%
+    # Step two: Create the NGFS paths from paths rolled forward and the differences in the NGFS datasets
+    for region in region_lst:
+        create_ngfs_data(region, t_end)
     # %%
     # Step two: create prior distribution by mixing noise with observations
     prior = create_prior(region_lst, 3, 0.15)
@@ -436,13 +479,10 @@ if __name__ == '__main__':
     portfolio = create_portfolio(mu, sigma, delta)
 
 
-    # Lines for debugging
-    # # %%
-    # p_starr, thetar = dual(*create_matrices(t_end, ["US"], kmtest, kmscores))
-    # # %%
-    # c_matr, target = create_general_matrices(stocks.keys(),kmtest, kmscores, 0)
-    # c_matr = c_matr.T
-    # # %%
-    # g_mean_test = create_general_matrices(["US"],kmtest, kmscores, 0)
-    # # %%
-    # view = np.load((f"Prior distributions/EU_hist_forward.npy"))
+# Lines for debugging
+# %%
+test, test2 = create_ngfs_data('US', t_end)
+# %%
+t3 = np.load(f'Prior distributions/US_hist_forward.npy').mean(axis=-1).T
+# %%
+roll_macro('US', J, t_end)
