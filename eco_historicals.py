@@ -85,7 +85,7 @@ def create_historical(region):
     historical.to_csv(f'Historical data/{region}_economical_historical.csv')
     return historical
 if __name__ == "__main__":
-    t = create_historical("US")
+    t = create_historical("EU")
 
 
 
