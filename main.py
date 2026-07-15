@@ -366,29 +366,26 @@ def dual(G, b):
     print(f"It took {time.time() - start_time} seconds to complete the optimization")
     return p_post, theta
 
-def create_posterior(p, prior):
+def create_posterior(t_begin, t_end, weights):
+    # weights: vector of posterior weights
+
+    # Creates array containing posterior mean and variance for all assets for all years in the time horizon
+
     asset_count = sum(len(stocks[r]) for r in stocks.keys())
-    post_dists = np.zeros([len(stocks.keys()) * asset_count, 2])
+    post_dists = np.zeros([asset_count, (t_end - t_begin + 1), 2])
     i = 0
     for r in stocks.keys():
         paths = np.load(f"Prior distributions/{r}_mixed_means.npy")
+        # Iterate over all assets per region
         for j in range(paths.shape[0]):
-            mu = prior @ p
+            prior_means = paths[j]
+            # vector of all posterior means
+            mu = prior_means @ weights
             # Calculate variance for weighted mean
-            var = (np.square(prior - mu) @ p)/(1 - sum(np.square(p)))
-            post_dists[i, 0], post_dists[i, 1] = mu, var
+            var = (np.square(prior_means - mu) @ weights)/(1 - sum(np.square(weights)))
+            post_dists[i,:,0], post_dists[i,:,1] = mu, var
             i += 1
     return post_dists
-
-def posterior_horizon(t_begin, t_end, regions, s_paths, s_scores):
-    start_time = time.time()
-    asset_count = sum(len(stocks[r]) for r in stocks.keys())
-    post_hor = np.zeros([t_end + 1 - t_begin,len(stocks.keys()) * asset_count, 2])
-    for year in range(t_begin , t_end + 1):
-        p_post = dual(year, regions, s_paths, s_scores)
-        post_hor[year - t_begin, :, :] = create_posterior(year, p_post)
-    print(f"It took {time.time() - start_time} seconds to create the posterior distributions")
-    return post_hor
 
 def create_portfolio(mu, sigma, delta):
     # mu: expected value of assets
@@ -431,7 +428,13 @@ if __name__ == '__main__':
     p_star, theta = dual(*create_general_matrices(stocks.keys(),kmtest , kmscores, 0.20))
     # %%
     # Step five: Compute the posterior distribution for the end of the time horizon
-    
+    post_dists = create_posterior(t_begin, t_end, p_star)
+    # %%
+    # Step six: Create portfolio based on target year and given risk aversion
+    mu, sigma = post_dists[:, -1, 0], np.diag(post_dists[:, -1, 1])
+    delta = 2
+    portfolio = create_portfolio(mu, sigma, delta)
+
 
     # Lines for debugging
     # # %%
