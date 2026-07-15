@@ -60,3 +60,9 @@ df.to_csv(r"Historical data/EU/Macro economic data/ECB_pr.csv")
 df = pd.read_csv(r"Historical data/EU/Macro economic data/ECB_er_unedited.csv")
 df.iloc[:, -1] = df.iloc[:, -1].apply(lambda x: x/1.1836)
 df.to_csv(r"Historical data/EU/Macro economic data/ECB_er.csv")
+# %%
+# Convert MSCI corporate bond data from excel to .csv
+df = pd.read_excel("733216 - MSCI EUR High Yield Selection Corporate Bond Index - 2021-01-01 - 2025-12-31 - Monthly.xlsx")
+df.to_csv(r"Historical data/EU/Stock data/MSCI.csv", index = True)
+# %%
+df = pd.read_csv("Historical data/EU/Stock data/MSCI.csv")

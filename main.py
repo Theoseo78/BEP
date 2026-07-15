@@ -2,7 +2,7 @@
 import pandas as pd
 import numpy as np
 import time
-from models import create_model, ngfs_pull
+from reg_models import create_model, ngfs_pull
 from hmm_training import find_optimal_model
 from sklearn.utils import check_random_state
 from sklearn.cluster import KMeans
@@ -14,7 +14,7 @@ from copy import copy
 
 # Initialize variables
 rs = check_random_state(547362)
-region_lst = ['US']
+region_lst = ['US', 'EU']
 scenario_list = [
     "Net Zero 2050",
     "Delayed transition",
@@ -24,7 +24,10 @@ scenario_list = [
 # This also determines the order of the assets in the numpy arrays
 stocks = {'US': [('SP500', 'index'),
                  ('DGS10', 'govbond'),
-                 ('BAMLC0A4CBBBEY', 'index')], }
+                 ('BAMLC0A4CBBBEY', 'index')],
+          'EU': [('EURO STOXX 50', 'index'),
+                ('MSCI', 'index')],
+          }
 
 # Train regression models
 # One for predictions, one for sensitivity analysis
@@ -70,7 +73,7 @@ def roll_macro(region, npaths, horizon):
         v = 0
         for mname, m in models[region].items():
             # Predict outcomes and standard deviations of those outcomes
-            m_arr[v, :, i] = np.exp(m[0].predict(df_path))
+            m_arr[v, :, i] = np.exp(m.predict(df_path))
             v += 1
     # Save the arrays
     np.save(f"Prior distributions/{region}_hist_forward", p_arr)
@@ -98,42 +101,6 @@ def create_hist_dists(region):
     np.save(f"Prior distributions/{region}_hist_dists", mv_agg)
     return mv_agg
 
-
-def create_prior(region, scale, ratio):
-    # region: what geographical region to consider
-    # npaths: number of paths to be simulated
-    # scale: constant to scale distributions by to create noise
-    # ratio: ratio between historical roll forward and noise
-
-    # Adds noisy measurements to empirically determined distributions
-
-    start_time = time.time()
-    # Open empirical distributions and paths
-    dists = np.load(f"Prior distributions/{region}_hist_dists.npy")
-    m_arr = np.load(f"Prior distributions/{region}_hist_means.npy")
-    asset_count, npaths = dists.shape[0], m_arr.shape[-1]
-    # Calculate lambda to use for mixing the distributions
-    l = 1/(1 - ratio)
-    for i in range(asset_count):
-        # Extract means and variances
-        asset = dists[i]
-        means = asset[:, 0]
-        cov = scale**2 * np.diag(asset[:, 1])
-        # Keep RNG consistent
-        rng = np.random.default_rng()
-        draws = rng.multivariate_normal(means, cov, size=npaths)
-        # Add drawn means to means array for path allocation later
-        m_arr[i, :, :] += l * draws.transpose()
-        # Calculate and store sample mean, sample variance for prior distribution
-        dists[i, :, :] += np.array([l * draws.mean(axis=0), l**2 * np.var(draws, axis=0)]).transpose()
-
-    # Save the mixed means, distributions, and used parameters
-    np.save(f"Prior distributions/{region}_mixed_means", m_arr)
-    np.save(f"Prior distributions/{region}_mixed_dists", dists)
-    np.save(f"Prior distributions/{region}_mixing_params", np.array([scale, ratio]))
-    print(f"It took {time.time() - start_time} seconds to create the prior")
-    return m_arr, dists
-
 def ngfs_predictions(region, horizon):
     # region: what geographical region to consider
 
@@ -148,6 +115,44 @@ def ngfs_predictions(region, horizon):
             scenario_preds[s][v, :] = np.exp(preds)
             v += 1
     return scenario_preds
+
+def create_prior(regions, scale, ratio):
+    # region: what geographical region to consider
+    # npaths: number of paths to be simulated
+    # scale: constant to scale distributions by to create noise
+    # ratio: ratio between historical roll forward and noise
+
+    # Adds noisy measurements to empirically determined distributions
+    # Noise is centered around NGFS scenario with variance equal to (scale * sigma)^2
+
+    start_time = time.time()
+    # Open empirical distributions and paths
+    for region in regions:
+        dists = np.load(f"Prior distributions/{region}_hist_dists.npy")
+        m_arr = np.load(f"Prior distributions/{region}_hist_means.npy")
+        asset_count, npaths = dists.shape[0], m_arr.shape[-1]
+        # Calculate lambda to use for mixing the distributions
+        l = ratio/(1 - ratio)
+        i = 0
+        for asset in stocks[region]:
+            # Keep RNG consistent
+            rng = np.random.default_rng()
+            # Generate noise per scenario
+            for s in scenario_list:
+                data = ngfs_pull(region, s)
+                sc_distribution = models[region][asset[0]].get_prediction(data)
+                sc_mean, sc_var = sc_distribution.predicted_mean, np.diag((scale * sc_distribution.se)**2)
+                draws = rng.multivariate_normal(sc_mean, sc_var, size=npaths)
+                # Add drawn means to means array for path allocation later
+                m_arr[i, :, :] += (l/len(scenario_list)) * draws.transpose()
+                # Calculate and store sample mean, sample variance for prior distribution
+                dists[i, :, :] += np.array([(l/len(scenario_list)) * draws.mean(axis=0), (l/len(scenario_list))**2 * np.var(draws, axis=0)]).transpose()
+
+        # Save the mixed means, distributions, and used parameters
+        np.save(f"Prior distributions/{region}_mixed_means", m_arr)
+        np.save(f"Prior distributions/{region}_mixed_dists", dists)
+        np.save(f"Prior distributions/{region}_mixing_params", np.array([scale, ratio]))
+    print(f"It took {time.time() - start_time} seconds to create the prior")
 
 def k_means_paths(regions, horizon):
     # regions: list of economical regions
@@ -230,7 +235,7 @@ def calc_likelihood(regions, s_paths):
         scenario_scores[k] = v / norm_fac
     return scenario_scores
 
-# TODO: Have matrices be created based on a specific year in the horizon, rather than aggregating it to all years
+# 
 def create_matrices(year, regions, s_paths, s_scores):
     # year: ranges from 2026 to t_end
     # region: list of regions
@@ -281,7 +286,7 @@ def create_general_matrices(regions, s_paths, s_scores, eps):
     # s_scores: relative log-likelihood of scenario's
     # eps: amount of error in characteristic values (percent)
 
-    # Create arrays that form the constraints and target values
+    # Create arrays that form the constraints and target values for the year 2050
 
     # Create selection array for probability of scenario's
     # Work using scenario's passed from scores
@@ -293,22 +298,26 @@ def create_general_matrices(regions, s_paths, s_scores, eps):
     for sc, paths in s_paths.items():
         g_prob = np.zeros([2, J])
         b_prob = np.array([s_scores[sc], -s_scores[sc]])
+        if g is None:
+            g = g_prob
+            b = b_prob
+        else:
+            g = np.vstack([g, g_prob])
+            b = np.concatenate([b, b_prob])
         for p in paths:
             g_prob[:, p] = [1, -1]
         # Concatenate all regions onto each other in order of regions list
         for r in regions:
-            hist_dat = np.mean(np.load(f"Prior distributions/{r}_hist_forward.npy"), axis=0)
+            hist_dat = np.load(f"Prior distributions/{r}_hist_forward.npy")[-1, :, :]
             # Multiply element-wise with selection matrix to select the assigned paths
+            # Account for lower bound
             g_mean = np.vstack([hist_dat, -1 * hist_dat])
-            char_vals = np.mean(ngfs_pull(r, sc).to_numpy(), axis=0)
-            b_mean = np.concatenate([(1 + eps) * char_vals, (eps - 1) * char_vals])
-            selection = np.tile(g_prob, (hist_dat.shape[0], 1))
-            if g is None:
-                g = np.vstack([g_prob, (g_mean * selection)])
-                b = np.concatenate([b_prob, b_mean])
-            else:
-                g = np.vstack([g, g_prob, (g_mean * selection)])
-                b = np.concatenate([b, b_prob, b_mean])
+            char_vals = ngfs_pull(r, sc).to_numpy()[-1, :]
+            b_mean = np.concatenate([(1 + eps) * char_vals, -(1 - eps) * char_vals])
+            # Only have the positive values be the selection matrix
+            selection = np.tile(g_prob[0], (2*hist_dat.shape[0], 1))
+            g = np.vstack([g, (g_mean * selection)])
+            b = np.concatenate([b, b_mean])
         v += 1
     return g, b
 
@@ -324,24 +333,20 @@ def dual(G, b):
     # Amount of constraints
     c_num = np.shape(G)[0]
     logZ = lambda theta: logsumexp(np.log(p0) - G.T @ theta)
-    f = lambda theta: (logZ(theta) - theta.T @ b)
+    f = lambda theta:  b @ theta + logZ(theta)
     # Additional information the solve can use
     theta0 = np.zeros(c_num)
-    p = lambda theta: np.exp(np.log(p0) + G.T @ theta - logZ(theta))
-    Gp = lambda theta: G @ p(theta)
-    grad =lambda theta: Gp(theta) - b
     # Lagrange terms must be greater or equal to zero
     options = {'maxiter': 100, 'maxfun': int(1e6)}
-    res = minimize(lambda x:-1*f(x), x0=theta0, method="L-BFGS-B", bounds=[(0, None)] *  c_num)
-    p_post = res.x
+    res = minimize(lambda x:-1*f(x), x0=theta0, method="L-BFGS-B", bounds=[(0, None)] *  c_num, options=options)
     print(f"Success: {res.success}")
     print(f"{res.message}. \nObjective function value: {res.fun}. \nIterations: n = {res.nit}")
     print(f"Largest component in jacobian: {max(abs(res.jac))}")
     theta = res.x
-    p_post = np.exp(np.log(p0) + G.T @ theta - logZ(theta))
+    p_post = np.exp(np.log(p0) - G.T @ theta - logZ(theta))
     # Returns log(p*), where p* are the posterior weights.
     print(f"It took {time.time() - start_time} seconds to complete the optimization")
-    return p_post, res.x
+    return p_post, theta
 
 def create_posterior(p, prior):
     asset_count = sum(len(stocks[r]) for r in stocks.keys())
@@ -357,7 +362,6 @@ def create_posterior(p, prior):
             i += 1
     return post_dists
 
-# TODO: Create function that takes all years into account
 def posterior_horizon(t_begin, t_end, regions, s_paths, s_scores):
     start_time = time.time()
     asset_count = sum(len(stocks[r]) for r in stocks.keys())
@@ -399,13 +403,12 @@ for r in region_lst:
     data_arr = df.to_numpy().reshape(-1, len(df.columns))
     # Construct HMM model on the data
     opt_hmm[r] = find_optimal_model(data_arr, 10)
+    print(f"region: {r}")
 
 # %%
-roll_macro("US", J, t_end)
+roll_macro("EU", J, t_end)
 # %%
-US_roll = create_hist_dists("US")
-# %%
-prior = create_prior("US", 3, 0.1)
+create_hist_dists('EU')
 # %%
 patapim_too = assign_paths("US")
 patapim_tree = calc_likelihood(["US"], patapim_too)
@@ -421,16 +424,20 @@ teto = {}
 for k, v in patapim.items():
     teto[k] = np.concatenate(v)
 # %%
-kmtest = k_means_paths(["US"], t_end)
-kmscores = calc_likelihood(["US"], kmtest)
+region_lst = ['US', 'EU']
+prior = create_prior(region_lst, 3, 0.15)
+kmtest = k_means_paths(region_lst, t_end)
+kmscores = calc_likelihood(region_lst, kmtest)
 # %%
 km_post = posterior_horizon(t_begin, t_end, stocks.keys(), kmtest, kmscores)
 # %%
-p_star, theta = dual(*create_general_matrices(["US"],kmtest, kmscores, 0.2))
+p_star, theta = dual(*create_general_matrices(stocks.keys(),kmtest , kmscores, 0.20))
 # %%
 p_starr, thetar = dual(*create_matrices(t_end, ["US"], kmtest, kmscores))
 # %%
-c_matr, target = create_general_matrices(["US"],kmtest, kmscores, 0.05)
+c_matr, target = create_general_matrices(stocks.keys(),kmtest, kmscores, 0)
+c_matr = c_matr.T
 # %%
-test = np.load("Prior distributions/US_hist_forward.npy")
-test = np.mean(test, axis=0)
+g_mean_test = create_general_matrices(["US"],kmtest, kmscores, 0)
+# %%
+view = np.load((f"Prior distributions/EU_hist_forward.npy"))
