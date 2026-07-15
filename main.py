@@ -14,7 +14,6 @@ from copy import copy
 
 # Initialize variables
 rs = check_random_state(547362)
-region_lst = ['US', 'EU']
 scenario_list = [
     "Net Zero 2050",
     "Delayed transition",
@@ -29,6 +28,8 @@ stocks = {'US': [('SP500', 'index'),
                 ('MSCI', 'index')],
           }
 
+region_lst = stocks.keys()
+
 # Train regression models
 # One for predictions, one for sensitivity analysis
 models = {}
@@ -36,6 +37,19 @@ for r in stocks.keys():
     models[r] = {}
     for prod in stocks[r]:
         models[r][prod[0]] = create_model(prod[0], r, False, ac=prod[1])
+
+# Finds optimal HMM per region
+opt_hmm = {}
+for r in region_lst:
+    df = pd.read_csv(f"Historical data/{r}_economical_historical.csv")
+    df = df.drop(df.columns[0], axis=1)
+
+    # Reshape to (observations, variables)
+    data_arr = df.to_numpy().reshape(-1, len(df.columns))
+    # Construct HMM model on the data
+    opt_hmm[r] = find_optimal_model(data_arr, 10)
+    print(f"region: {r}")
+
 
 # Initialize variables for creating the posterior
 J = 20000
@@ -156,7 +170,7 @@ def create_prior(regions, scale, ratio):
 
 def k_means_paths(regions, horizon):
     # regions: list of economical regions
-
+    start_time = time.time()
     # Assign paths to scenario's by using k-means clustering
     # The centroids are the scenario predictions
     predictions = {r: ngfs_predictions(r, horizon) for r in regions}
@@ -169,8 +183,10 @@ def k_means_paths(regions, horizon):
     label_lst = list(res)
     for i in range(len(label_lst)):
         scenario_paths[scenario_list[label_lst[i]]].add(i)
+    print(f"It took {time.time() - start_time} seconds to assign all the paths")
     return scenario_paths
 
+# REDUNDANT, only here for historical purposes
 def assign_paths(region):
     # region: what geographical region to consider
 
@@ -213,6 +229,7 @@ def assign_paths(region):
     print(f"It took {time.time() - start_time} seconds assign all paths")
     return scenario_paths
 
+
 def calc_likelihood(regions, s_paths):
     # region: what geographical region to consider
 
@@ -233,9 +250,10 @@ def calc_likelihood(regions, s_paths):
     norm_fac = sum(scenario_scores.values())
     for k, v in scenario_scores.items():
         scenario_scores[k] = v / norm_fac
+
     return scenario_scores
 
-# 
+# REDUNDANT, only here for historical purposes
 def create_matrices(year, regions, s_paths, s_scores):
     # year: ranges from 2026 to t_end
     # region: list of regions
@@ -392,52 +410,36 @@ def glide_path():
 
 # TODO: Perform sensitivity analysis
 
-# %%
-# Finds optimal HMM per region
-opt_hmm = {}
-for r in region_lst:
-    df = pd.read_csv(f"Historical data/{r}_economical_historical.csv")
-    df = df.drop(df.columns[0], axis=1)
+# All comments containing the double percent signs are read as an individual cell of code by the PyCharm IDE (and other IDE's)
+# This is used to run steps of the model individually, as certain steps (primarily step one) can take a very long time
 
-    # Reshape to (observations, variables)
-    data_arr = df.to_numpy().reshape(-1, len(df.columns))
-    # Construct HMM model on the data
-    opt_hmm[r] = find_optimal_model(data_arr, 10)
-    print(f"region: {r}")
+if __name__ == '__main__':
+    # %%
+    # Overview of main.py
+    # Step one: create macro-economic paths per region
+    for region in region_lst:
+        roll_macro("EU", J, t_end)
+    # %%
+    # Step two: create prior distribution by mixing noise with observations
+    prior = create_prior(region_lst, 3, 0.15)
+    # %%
+    # Step three: calculate relative log-likelihood for scenarios, and assign paths to scenarios with k-means clustering
+    kmtest = k_means_paths(region_lst, t_end)
+    kmscores = calc_likelihood(region_lst, kmtest)
+    # %%
+    # Step four: solve dual optimization problem and get the posterior weights
+    p_star, theta = dual(*create_general_matrices(stocks.keys(),kmtest , kmscores, 0.20))
+    # %%
+    # Step five: Compute the posterior distribution for the end of the time horizon
+    
 
-# %%
-roll_macro("EU", J, t_end)
-# %%
-create_hist_dists('EU')
-# %%
-patapim_too = assign_paths("US")
-patapim_tree = calc_likelihood(["US"], patapim_too)
-# %%
-final_patapim = dual(*create_matrices(t_end, ["US"], patapim_too,patapim_tree))
-# %%
-fin_pat = posterior_horizon(t_begin, t_end, stocks.keys(), patapim_too, patapim_tree)
-# %%
-dat = ngfs_pull("US", "Net Zero 2050").to_numpy()
-# %%
-patapim = ngfs_predictions("US", t_end)
-teto = {}
-for k, v in patapim.items():
-    teto[k] = np.concatenate(v)
-# %%
-region_lst = ['US', 'EU']
-prior = create_prior(region_lst, 3, 0.15)
-kmtest = k_means_paths(region_lst, t_end)
-kmscores = calc_likelihood(region_lst, kmtest)
-# %%
-km_post = posterior_horizon(t_begin, t_end, stocks.keys(), kmtest, kmscores)
-# %%
-p_star, theta = dual(*create_general_matrices(stocks.keys(),kmtest , kmscores, 0.20))
-# %%
-p_starr, thetar = dual(*create_matrices(t_end, ["US"], kmtest, kmscores))
-# %%
-c_matr, target = create_general_matrices(stocks.keys(),kmtest, kmscores, 0)
-c_matr = c_matr.T
-# %%
-g_mean_test = create_general_matrices(["US"],kmtest, kmscores, 0)
-# %%
-view = np.load((f"Prior distributions/EU_hist_forward.npy"))
+    # Lines for debugging
+    # # %%
+    # p_starr, thetar = dual(*create_matrices(t_end, ["US"], kmtest, kmscores))
+    # # %%
+    # c_matr, target = create_general_matrices(stocks.keys(),kmtest, kmscores, 0)
+    # c_matr = c_matr.T
+    # # %%
+    # g_mean_test = create_general_matrices(["US"],kmtest, kmscores, 0)
+    # # %%
+    # view = np.load((f"Prior distributions/EU_hist_forward.npy"))
