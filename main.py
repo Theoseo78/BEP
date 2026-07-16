@@ -142,7 +142,6 @@ def create_ngfs_data(region, t_end):
             elif v in pdiff:
                 new_df[v] = sim_paths[i] * (1 + diffs[v]/100)
             i += 1
-        return new_df, diffs
         new_df.to_csv(f'NGFS data/{region}_{s}.csv')
 
 
@@ -367,7 +366,8 @@ def create_general_matrices(regions, s_paths, s_scores, eps):
             # Multiply element-wise with selection matrix to select the assigned paths
             # Account for lower bound
             g_mean = np.vstack([hist_dat, -1 * hist_dat])
-            char_vals = pd.read_csv(f'NGFS data/{r}_{sc}.csv').to_numpy()[-1, :]
+            # First column is the dates, should be excluded
+            char_vals = pd.read_csv(f'NGFS data/{r}_{sc}.csv').to_numpy()[-1, 1:]
             b_mean = np.concatenate([(1 + eps) * char_vals, -(1 - eps) * char_vals])
             # Only have the positive values be the selection matrix
             selection = np.tile(g_prob[0], (2*hist_dat.shape[0], 1))
@@ -393,7 +393,7 @@ def dual(G, b):
     theta0 = np.zeros(c_num)
     # Lagrange terms must be greater or equal to zero
     options = {'maxiter': 100, 'maxfun': int(1e6)}
-    res = minimize(lambda x:-1*f(x), x0=theta0, method="L-BFGS-B", bounds=[(0, None)] *  c_num, options=options)
+    res = minimize(lambda x:f(x), x0=theta0, method="L-BFGS-B", bounds=[(0, None)] *  c_num, options=options)
     print(f"Success: {res.success}")
     print(f"{res.message}. \nObjective function value: {res.fun}. \nIterations: n = {res.nit}")
     print(f"Largest component in jacobian: {max(abs(res.jac))}")
@@ -418,8 +418,9 @@ def create_posterior(t_begin, t_end, weights):
             prior_means = paths[j]
             # vector of all posterior means
             mu = prior_means @ weights
+            mu_matrix = np.tile(mu, [1, J])
             # Calculate variance for weighted mean
-            var = (np.square(prior_means - mu) @ weights)/(1 - sum(np.square(weights)))
+            var = (np.square(prior_means - mu_matrix) @ weights)/(1 - sum(np.square(weights)))
             post_dists[i,:,0], post_dists[i,:,1] = mu, var
             i += 1
     return post_dists
@@ -461,14 +462,14 @@ if __name__ == '__main__':
         create_ngfs_data(region, t_end)
     # %%
     # Step two: create prior distribution by mixing noise with observations
-    prior = create_prior(region_lst, 3, 0.15)
+    create_prior(region_lst, 3, 0.15)
     # %%
     # Step three: calculate relative log-likelihood for scenarios, and assign paths to scenarios with k-means clustering
     kmtest = k_means_paths(region_lst, t_end)
     kmscores = calc_likelihood(region_lst, kmtest)
     # %%
     # Step four: solve dual optimization problem and get the posterior weights
-    p_star, theta = dual(*create_general_matrices(stocks.keys(),kmtest , kmscores, 0.20))
+    p_star, theta = dual(*create_general_matrices(stocks.keys(),kmtest , kmscores, 0))
     # %%
     # Step five: Compute the posterior distribution for the end of the time horizon
     post_dists = create_posterior(t_begin, t_end, p_star)
@@ -479,10 +480,10 @@ if __name__ == '__main__':
     portfolio = create_portfolio(mu, sigma, delta)
 
 
-# Lines for debugging
+# Lines for debugging, or for step by step experimenting with the code
 # %%
-test, test2 = create_ngfs_data('US', t_end)
+test = create_general_matrices(stocks.keys(),kmtest , kmscores, 0.20)
 # %%
 t3 = np.load(f'Prior distributions/US_hist_forward.npy').mean(axis=-1).T
 # %%
-roll_macro('US', J, t_end)
+roll_macro('EU', J, t_end)
