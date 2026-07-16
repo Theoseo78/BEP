@@ -1,7 +1,7 @@
 Note: no pushes to this repository other than my own will be accepted. This repository's purpose is solely as a reference to my work for my bachelor thesis. <br>
 The last commit to this repository that represented the work in the thesis is form the 7th of July 2026 at 22:32 local time (GMT+1). <br>
 The bachelor thesis can be found [here]() <br><br>
-# Known issues: <br>
+# Known issues: 
 ## Non-convergence of dual problem
 <ul>
 <li>The dual contained a sign error causing the problem to be unbounded by default (fixed as of 15-07-2026)</li>
